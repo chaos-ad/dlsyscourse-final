@@ -46,8 +46,9 @@ def create_database(database=None, **kwargs):
     logger.info(f"creating athena database '{database}': done")
     return result
 
-def get_partitions(table, database=None):
-    return run_query(f"show partitions {table}", database)
+def get_partitions(table, database=None, **kwargs):
+    database = database or os.environ['AWS_ATHENA_DB']
+    return awswrangler.catalog.get_partitions(database=database, table=table, **kwargs)
 
 def drop_table(table, database=None):
     database = database or os.environ['AWS_ATHENA_DB']

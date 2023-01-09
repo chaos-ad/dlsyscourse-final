@@ -7,6 +7,7 @@ numpy
 pandas
 python-dotenv
 torch
+torchrec
 awswrangler
 pyyaml
 tabulate

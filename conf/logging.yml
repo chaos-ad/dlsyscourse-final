@@ -16,11 +16,13 @@ handlers:
         stream: ext://sys.stdout
 
 loggers:
-    apps.utils:
+    apps:
         level: DEBUG
-    apps.etl:
-        level: DEBUG
+    apps.data:
+        level: INFO
     notebooks:
+        level: DEBUG
+    tests.debug:
         level: DEBUG
 
 root:

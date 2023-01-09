@@ -12,9 +12,31 @@ logger = logging.getLogger(__name__)
 
 ##############################################################################
 
+TARGET_COLUMN = 'label'
+TARGET_COLUMNS = ['label']
 DENSE_COLUMNS = [f'feature_{idx:02d}' for idx in range(1, 14)]
 SPARSE_COLUMNS = [f'feature_{idx:02d}' for idx in range(14, 40)]
-ALL_COLUMNS = ['label'] + DENSE_COLUMNS + SPARSE_COLUMNS
+SPARSE_IDX_COLUMNS = [f'feature_{idx:02d}_idx' for idx in range(14, 40)]
+ALL_COLUMNS = TARGET_COLUMNS + DENSE_COLUMNS + SPARSE_COLUMNS
+
+##############################################################################
+
+RAW_DATA_S3_PATH = "criteo/raw"
+RAW_DATA_ATHENA_TABLE = "criteo_raw"
+
+PARQUET_DATA_S3_PATH = "criteo/parquet"
+PARQUET_DATA_ATHENA_TABLE = "criteo_parquet"
+
+PARSED_DATA_S3_PATH = "criteo/parsed"
+PARSED_DATA_ATHENA_TABLE = "criteo_parsed"
+
+##############################################################################
+
+def get_s3_url(s3_path, s3_prefix=None, s3_bucket=None):
+    s3_bucket = s3_bucket or os.environ['AWS_S3_BUCKET']
+    s3_prefix = s3_prefix or os.environ['AWS_S3_PREFIX']
+    s3_fullpath = os.path.join(s3_prefix, s3_path)
+    return f"s3://{s3_bucket}/{s3_fullpath}"
 
 ##############################################################################
 
@@ -26,7 +48,7 @@ def import_criteo_day(day, s3_fullpath, s3_bucket=None):
     logger.debug(f"running import cmd: '{import_cmd}'")
     subprocess.run(import_cmd, shell=True, check=True)
 
-def import_criteo_dataset(s3_path="criteo/raw", day_from=0, day_to=23, s3_bucket=None):
+def import_criteo_dataset(s3_path=RAW_DATA_S3_PATH, day_from=0, day_to=23, s3_bucket=None):
     s3_prefix = os.environ['AWS_S3_PREFIX']
     s3_fullpath = os.path.join(s3_prefix, s3_path)
     for day in range(day_from, day_to+1):
@@ -34,7 +56,7 @@ def import_criteo_dataset(s3_path="criteo/raw", day_from=0, day_to=23, s3_bucket
 
 ##############################################################################
 
-def get_criteo_dataset_tables(s3_path="criteo/raw", s3_bucket=None):
+def get_criteo_dataset_tables(s3_path=RAW_DATA_S3_PATH, s3_bucket=None):
     s3_prefix = os.environ['AWS_S3_PREFIX']
     s3_fullpath = os.path.join(s3_prefix, s3_path)
     return apps.utils.aws.s3.ls(s3_fullpath, s3_bucket)
@@ -44,7 +66,7 @@ def get_criteo_dataset_tables(s3_path="criteo/raw", s3_bucket=None):
 def init_database(athena_database=None):
     apps.utils.aws.athena.create_database(athena_database, exist_ok=True)
 
-def init_raw_athena_table(s3_path="criteo/raw", athena_table_name="criteo_raw", athena_database=None, s3_bucket=None):
+def init_raw_athena_table(s3_path=RAW_DATA_S3_PATH, athena_table_name=RAW_DATA_ATHENA_TABLE, athena_database=None, s3_bucket=None):
     s3_bucket = os.environ['AWS_S3_BUCKET']
     s3_prefix = os.environ['AWS_S3_PREFIX']
     s3_fullpath = os.path.join(s3_prefix, s3_path)
@@ -107,7 +129,41 @@ def init_raw_athena_table(s3_path="criteo/raw", athena_table_name="criteo_raw", 
     )
     apps.utils.aws.athena.run_query(f"MSCK REPAIR TABLE {athena_table_name}", database=athena_database)
 
-def init_parsed_athena_table(s3_path="criteo/parsed", athena_table_name="criteo_parsed", athena_database=None, s3_bucket=None):
+def init_parquet_athena_table(day_from=0, day_to=23, s3_path=PARQUET_DATA_S3_PATH, parquet_table=PARQUET_DATA_ATHENA_TABLE, raw_table=RAW_DATA_ATHENA_TABLE, athena_database=None, s3_bucket=None):
+    s3_bucket = os.environ['AWS_S3_BUCKET']
+    s3_prefix = os.environ['AWS_S3_PREFIX']
+    s3_fullpath = os.path.join(s3_prefix, s3_path)
+    apps.utils.aws.athena.create_parquet_table(
+        database = athena_database,
+        table = parquet_table,
+        s3_bucket = s3_bucket,
+        s3_path = s3_fullpath,
+        drop_if_exists = True,
+        drop_s3_data = True,
+        columns_types = OrderedDict(
+            [('label', 'int')] +
+            [(feature_name, 'int') for feature_name in DENSE_COLUMNS] +
+            [(feature_name, 'string') for feature_name in SPARSE_COLUMNS]
+        ),
+        partitions_types={'day': 'string'}
+    )
+
+    logger.info(f"converting raw data to parquet...")
+    apps.utils.aws.athena.run_query(
+        query=f"""
+            INSERT INTO {parquet_table}
+            SELECT * from {raw_table}
+            where day >= '{day_from:02d}'
+              and day <= '{day_to:02d}'
+        """, 
+        database = athena_database
+    )
+    logger.info(f"converting raw data to parquet: done")
+
+
+##############################################################################
+
+def init_parsed_athena_table(s3_path=PARSED_DATA_S3_PATH, athena_table_name=PARSED_DATA_ATHENA_TABLE, athena_database=None, s3_bucket=None):
     s3_bucket = os.environ['AWS_S3_BUCKET']
     s3_prefix = os.environ['AWS_S3_PREFIX']
     s3_fullpath = os.path.join(s3_prefix, s3_path)
@@ -127,7 +183,7 @@ def init_parsed_athena_table(s3_path="criteo/parsed", athena_table_name="criteo_
         compression='snappy'
     )
 
-def parse_criteo_day(day, raw_table="criteo_raw", parsed_table="criteo_parsed", athena_database=None):
+def parse_criteo_day(day, raw_table=RAW_DATA_ATHENA_TABLE, parsed_table=PARSED_DATA_ATHENA_TABLE, athena_database=None):
     logger.info(f"parsing raw data for day='{day:02d}'...")
     apps.utils.aws.athena.run_query(
         query=f"""
@@ -189,3 +245,4 @@ def parse_criteo_dataset(day_from=0, day_to=23, athena_database=None, s3_bucket=
         parse_criteo_day(day, athena_database=athena_database)
 
 ##############################################################################
+

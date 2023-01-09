@@ -4,6 +4,7 @@ import math
 from typing import List
 from needle.autograd import Tensor
 from needle import ops
+import needle.backend_ndarray as nd
 import needle.init as init
 import numpy as np
 
@@ -164,6 +165,14 @@ class SoftmaxLoss(Module):
         return res
         ### END YOUR SOLUTION
 
+## Numerically unstable version:
+class BinaryCrossEntropyLoss(Module):
+    def forward(self, input: Tensor, target: Tensor):
+        x = input
+        z = target
+        size = nd.prod(x.shape)
+        res = ops.summation(x - x * z + ops.log(1 + ops.exp(-x)))
+        return ops.divide_scalar(res, size)
 
 class BatchNorm1d(Module):
     def __init__(self, dim, eps=1e-5, momentum=0.1, device=None, dtype="float32"):
