@@ -23,7 +23,7 @@ loggers:
     notebooks:
         level: DEBUG
     tests.debug:
-        level: INFO
+        level: DEBUG
 
 root:
     level: INFO

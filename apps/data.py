@@ -105,9 +105,9 @@ class Criteo1TBDatasetBatchIter:
 
     def to_needle(self, batch):
         (X_dense, X_sparse, Y_true) = batch
-        Y_true = Tensor(Y_true, device=device, requires_grad=False)
-        X_dense = Tensor(X_dense, device=device, requires_grad=False)
-        X_sparse = Tensor(X_sparse, device=device, requires_grad=False)
+        Y_true = Tensor(Y_true, device=self.device, requires_grad=False)
+        X_dense = Tensor(X_dense, device=self.device, requires_grad=False)
+        X_sparse = Tensor(X_sparse, device=self.device, requires_grad=False)
         batch = (X_dense, X_sparse, Y_true)
         return batch
 
