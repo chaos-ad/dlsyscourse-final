@@ -47,13 +47,13 @@ def create_dataset(ouput_format, device, day=None, repeat_first_batch=0, **kwarg
 
 ##############################################################################
 
-def torch_train(model, loss_fn, optimizer, dataset, epoch_id=None, with_pbar=None):
+def torch_train(model, loss_fn, optimizer, dataset, epoch_id=None, with_pbar=None, device=torch.device("cpu")):
 
     num_samples = 0
     num_batches = 0
     avg_loss = 0
-    auroc = torcheval.metrics.BinaryAUROC()
-    accuracy = torcheval.metrics.BinaryAccuracy()
+    auroc = torcheval.metrics.BinaryAUROC(device=device)
+    accuracy = torcheval.metrics.BinaryAccuracy(device=device)
 
     model.train()
     pbar = tqdm.tqdm(desc=f"TRAIN[{epoch_id=}]", total=len(dataset)) if with_pbar else None
@@ -73,7 +73,7 @@ def torch_train(model, loss_fn, optimizer, dataset, epoch_id=None, with_pbar=Non
         auroc.update(Y_pred, Y_true.detach())
         accuracy.update(Y_pred, Y_true.detach())
         
-        cur_loss = float(loss.detach().numpy())
+        cur_loss = float(loss.detach().cpu().numpy())
         avg_loss = (avg_loss * num_batches + cur_loss) / (num_batches + 1)
 
         num_batches += 1
@@ -89,13 +89,13 @@ def torch_train(model, loss_fn, optimizer, dataset, epoch_id=None, with_pbar=Non
     logger.info(f"TRAIN[{epoch_id=}] done: {avg_loss=:0.4f}, {auroc_val=:0.4f}, {accuracy_val=:0.4f}, {num_samples=}, {num_batches=}")
     return (avg_loss, auroc_val, accuracy_val, num_samples, num_batches)
 
-def torch_eval(model, loss_fn, dataset, epoch_id=None, with_pbar=True):
+def torch_eval(model, loss_fn, dataset, epoch_id=None, with_pbar=True, device=torch.device("cpu")):
 
     num_samples = 0
     num_batches = 0
     avg_loss = 0
-    auroc = torcheval.metrics.BinaryAUROC()
-    accuracy = torcheval.metrics.BinaryAccuracy()
+    auroc = torcheval.metrics.BinaryAUROC(device=device)
+    accuracy = torcheval.metrics.BinaryAccuracy(device=device)
 
     model.eval()
     with torch.no_grad():
@@ -111,7 +111,7 @@ def torch_eval(model, loss_fn, dataset, epoch_id=None, with_pbar=True):
             auroc.update(Y_pred, Y_true.detach())
             accuracy.update(Y_pred, Y_true.detach())
 
-            cur_loss = float(loss.detach().numpy())
+            cur_loss = float(loss.detach().cpu().numpy())
             avg_loss = (avg_loss * num_batches + cur_loss) / (num_batches + 1)
 
             num_batches += 1
@@ -146,13 +146,13 @@ def run_torch(
     # change_lr = True,
     # lr_change_point = 0.65,
     # lr_after_change_point = 0.035,
-    with_pbar = False
-):
+    with_pbar = False,
     device = torch.device("cpu")
+):
 
-    train_dataset = torch_dataset(day = 0, repeat_first_batch=1000, batch_size = batch_size, device = device, sparse_buckets = num_embeddings_per_feature)
-    # eval_dataset = torch_dataset(day = 22, batch_size = batch_size, device = device, sparse_buckets = num_embeddings_per_feature)
-    test_dataset = torch_dataset(day = 23, limit_batches=1, batch_size = batch_size, device = device, sparse_buckets = num_embeddings_per_feature)
+    train_dataset = torch_dataset(day = 0, batch_size = batch_size, device = device, sparse_buckets = num_embeddings_per_feature)
+    eval_dataset = torch_dataset(day = 22, batch_size = batch_size, device = device, sparse_buckets = num_embeddings_per_feature)
+    test_dataset = torch_dataset(day = 23, batch_size = batch_size, device = device, sparse_buckets = num_embeddings_per_feature)
 
     model = torchrec.models.dlrm.DLRM(
         embedding_bag_collection=torchrec.EmbeddingBagCollection(
@@ -177,9 +177,9 @@ def run_torch(
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     for epoch_id in range(1, epochs+1):
-        torch_train(model, loss_fn, optimizer, train_dataset, epoch_id=epoch_id, with_pbar=with_pbar)
+        torch_train(model, loss_fn, optimizer, train_dataset, epoch_id=epoch_id, with_pbar=with_pbar, device=device)
         # torch_eval(model, loss_fn, eval_dataset, epoch_id=epoch_id, with_pbar=with_pbar)
-    torch_eval(model, loss_fn, test_dataset, epoch_id="test", with_pbar=with_pbar)
+    torch_eval(model, loss_fn, test_dataset, epoch_id="test", with_pbar=with_pbar, device=device)
 
 #############################################################################
 
@@ -382,7 +382,10 @@ def main():
     assert dotenv.load_dotenv(dotenv_path="conf/dev.env")
     apps.utils.common.setup_logging(config_file="conf/logging.yml")
 
-    run_torch()
+    import torch
+    device = torch.device("cuda")
+    
+    run_torch(device=device)
     # run_needle()
 
 if __name__ == '__main__':

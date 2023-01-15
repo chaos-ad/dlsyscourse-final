@@ -11,3 +11,4 @@ torchrec
 awswrangler
 pyyaml
 tabulate
+torcheval

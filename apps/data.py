@@ -54,6 +54,9 @@ class Criteo1TBDatasetBatchIter:
         self.device = device
         self.sparse_limits = self._init_sparse_attribute(sparse_limits, sparse_columns)
         self.sparse_buckets = self._init_sparse_attribute(sparse_buckets, sparse_columns)
+        num_ids_in_batch = len(apps.etl.SPARSE_IDX_COLUMNS) * batch_size
+        self.lengths = torch.ones((num_ids_in_batch * 2,), dtype=torch.int32, device=self.device)
+        self.offsets = torch.arange(0, num_ids_in_batch * 2 + 1, dtype=torch.int32, device=self.device)
     
     @staticmethod
     def _init_sparse_attribute(attr, sparse_columns):
@@ -82,11 +85,16 @@ class Criteo1TBDatasetBatchIter:
 
         CAT_FEATURE_COUNT = len(apps.etl.SPARSE_IDX_COLUMNS)
         num_ids_in_batch = CAT_FEATURE_COUNT * batch_size
+        if batch_size != self.batch_size:
+            lengths = torch.ones((num_ids_in_batch * 2,), dtype=torch.int32, device=self.device)
+            offsets = torch.arange(0, num_ids_in_batch * 2 + 1, dtype=torch.int32, device=self.device)
+        else:
+            lengths = self.lengths
+            offsets = self.offsets
+
         length_per_key = CAT_FEATURE_COUNT * [batch_size]
         offset_per_key = [batch_size * i for i in range(CAT_FEATURE_COUNT + 1)]
         index_per_key = {key: i for (i, key) in enumerate(apps.etl.SPARSE_IDX_COLUMNS)}
-        lengths = torch.ones((num_ids_in_batch * 2,), dtype=torch.int32)
-        offsets = torch.arange(0, num_ids_in_batch * 2 + 1, dtype=torch.int32)
 
         X_sparse = torchrec.sparse.jagged_tensor.KeyedJaggedTensor(
             keys = apps.etl.SPARSE_IDX_COLUMNS,

@@ -17,13 +17,13 @@ handlers:
 
 loggers:
     apps:
-        level: DEBUG
+        level: INFO
     apps.data:
         level: INFO
     notebooks:
-        level: DEBUG
+        level: INFO
     tests.debug:
-        level: DEBUG
+        level: INFO
 
 root:
     level: INFO
